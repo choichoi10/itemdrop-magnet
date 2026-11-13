@@ -1,0 +1,502 @@
+package engine;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.ConsoleHandler;
+import java.util.logging.FileHandler;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import entity.Ship;
+import screen.AchievementsScreen;
+import screen.CashOutScreen;
+import screen.GameScreen;
+import screen.HighScoreScreen;
+import screen.ScoreScreen;
+import screen.Screen;
+import screen.SettingsScreen;
+import screen.ShopScreen;
+import screen.ShipSelectScreen;
+import screen.TitleScreen;
+import screen.TutorialScreen;
+
+/**
+ * Implements core game logic.
+ * 
+ * @author <a href="mailto:RobertoIA1987@gmail.com">Roberto Izquierdo Amo</a>
+ * 
+ */
+public final class Core {
+
+	/** Width of current screen. */
+	private static final int WIDTH = 448;
+	/** Height of current screen. */
+	private static final int HEIGHT = 520;
+	/** Max fps of current screen. */
+	private static final int FPS = 60;
+
+	/** Max lives. */
+	private static final int MAX_LIVES = 3;
+	/** Levels between extra life. */
+	private static final int EXTRA_LIFE_FRECUENCY = 3;
+	/** Total number of levels. */
+	private static final int NUM_LEVELS = 10;
+	
+	/** Difficulty settings for level 1. */
+	private static final GameSettings SETTINGS_LEVEL_1 =
+			new GameSettings(5, 2, 60, 2000);
+	/** Difficulty settings for level 2. */
+	private static final GameSettings SETTINGS_LEVEL_2 =
+			new GameSettings(5, 3, 50, 2500);
+	/** Difficulty settings for level 3. */
+	private static final GameSettings SETTINGS_LEVEL_3 =
+			new GameSettings(5, 4, 40, 2000, true);
+	/** Difficulty settings for level 4. */
+	private static final GameSettings SETTINGS_LEVEL_4 =
+			new GameSettings(6, 4, 30, 1500);
+	/** Difficulty settings for level 5. */
+	private static final GameSettings SETTINGS_LEVEL_5 =
+			new GameSettings(5, 4, 5, 1000);
+	/** Difficulty settings for level 6. */
+	private static final GameSettings SETTINGS_LEVEL_6 =
+			new GameSettings(6, 3, 10, 1000, Math.round(6 * 3 * 0.20f));
+	/** Difficulty settings for level 7. */
+	private static final GameSettings SETTINGS_LEVEL_7 =
+			new GameSettings(6, 4, 5, 500);
+	/** Difficulty settings for level 8. */
+	private static final GameSettings SETTINGS_LEVEL_8 =
+			new GameSettings(7, 4, 3, 500);
+	/** Difficulty settings for level 9. */
+	private static final GameSettings SETTINGS_LEVEL_9 =
+			new GameSettings(7, 5, 1, 300, true, Math.round(7 * 5 * 0.20f));
+	/** Difficulty settings for level 10. */
+	private static final GameSettings SETTINGS_LEVEL_10 =
+			new GameSettings(5, 4, 8, 500);
+
+	
+	/** Frame to draw the screen on. */
+	private static Frame frame;
+	/** Screen currently shown. */
+	private static Screen currentScreen;
+	/** Difficulty settings list. */
+	private static List<GameSettings> gameSettings;
+	/** Application logger. */
+	private static final Logger LOGGER = Logger.getLogger(Core.class
+			.getSimpleName());
+	/** Logger handler for printing to disk. */
+	private static Handler fileHandler;
+	/** Logger handler for printing to console. */
+	private static ConsoleHandler consoleHandler;
+	/** Persistent achievement progress manager. */
+	private static AchievementManager achievementManager;
+
+
+	/**
+	 * Test implementation.
+	 * 
+	 * @param args
+	 *            Program args, ignored.
+	 */
+	public static void main(final String[] args) {
+		try {
+			LOGGER.setUseParentHandlers(false);
+
+			fileHandler = new FileHandler("log");
+			fileHandler.setFormatter(new MinimalFormatter());
+
+			consoleHandler = new ConsoleHandler();
+			consoleHandler.setFormatter(new MinimalFormatter());
+
+			LOGGER.addHandler(fileHandler);
+			LOGGER.addHandler(consoleHandler);
+			LOGGER.setLevel(Level.ALL);
+
+		} catch (Exception e) {
+			// TODO handle exception
+			e.printStackTrace();
+		}
+
+		frame = new Frame(WIDTH, HEIGHT);
+		DrawManager.getInstance().setFrame(frame);
+		int width = frame.getWidth();
+		int height = frame.getHeight();
+
+		gameSettings = new ArrayList<GameSettings>();
+		gameSettings.add(SETTINGS_LEVEL_1);
+		gameSettings.add(SETTINGS_LEVEL_2);
+		gameSettings.add(SETTINGS_LEVEL_3);
+		gameSettings.add(SETTINGS_LEVEL_4);
+		gameSettings.add(SETTINGS_LEVEL_5);
+		gameSettings.add(SETTINGS_LEVEL_6);
+		gameSettings.add(SETTINGS_LEVEL_7);
+		gameSettings.add(SETTINGS_LEVEL_8);
+		gameSettings.add(SETTINGS_LEVEL_9);
+		gameSettings.add(SETTINGS_LEVEL_10);
+		
+		GameState gameState;
+		int startLevel = Integer.getInteger("game.startLevel", 1);
+		if (startLevel < 1 || startLevel > NUM_LEVELS)
+			startLevel = 1;
+
+		int returnCode = startLevel == 1 ? 1 : 2;
+		do {
+			gameState = new GameState(startLevel, 0, MAX_LIVES, 0, 0, 0);
+			entity.boss.BossRoster.newRun(); // New run, new boss order (Team Entities).
+
+			switch (returnCode) {
+			case 1:
+				// Main menu.
+				currentScreen = new TitleScreen(width, height, FPS);
+				LOGGER.info("Starting " + WIDTH + "x" + HEIGHT
+						+ " title screen at " + FPS + " fps.");
+				returnCode = frame.setScreen(currentScreen);
+				LOGGER.info("Closing title screen.");
+				break;
+			case 2:
+				// Practice first; ESC returns to the menu without starting a run.
+				if (startLevel == 1) {
+					currentScreen = new TutorialScreen(width, height, FPS);
+					returnCode = frame.setScreen(currentScreen);
+					if (returnCode != 2) {
+						break;
+					}
+				}
+				// Game & score.
+				do {
+					// One extra live every few levels.
+					boolean bonusLife = gameState.getLevel()
+							% EXTRA_LIFE_FRECUENCY == 0
+							&& gameState.getLivesRemaining() < MAX_LIVES;
+					
+					currentScreen = new GameScreen(gameState,
+							gameSettings.get(gameState.getLevel() - 1),
+							bonusLife, width, height, FPS);
+					LOGGER.info("Starting " + WIDTH + "x" + HEIGHT
+							+ " game screen at " + FPS + " fps.");
+					frame.setScreen(currentScreen);
+					LOGGER.info("Closing game screen.");
+
+					gameState = ((GameScreen) currentScreen).getGameState();
+
+					gameState = new GameState(gameState.getLevel() + 1,
+							gameState.getScore(),
+							gameState.getLivesRemaining(),
+							gameState.getBulletsShot(),
+							gameState.getShipsDestroyed(),
+							gameState.getPendingDiamonds(),
+							gameState.getLevelsCompletedRun(),
+                            gameState.getCoinsCollected());
+
+					gameState = offerCashOut(gameState, width, height);
+
+				} while (gameState.getLivesRemaining() > 0
+						&& gameState.getLevel() <= NUM_LEVELS);
+
+				gameState = settlePendingDiamonds(gameState);
+
+				LOGGER.info("Starting " + WIDTH + "x" + HEIGHT
+						+ " score screen at " + FPS + " fps, with a score of "
+						+ gameState.getScore() + ", "
+						+ gameState.getLivesRemaining() + " lives remaining, "
+						+ gameState.getBulletsShot() + " bullets shot, "
+						+ gameState.getShipsDestroyed() + " ships destroyed, and "
+                        + gameState.getCoinsCollected() + " coins collected. ");
+				currentScreen = new ScoreScreen(width, height, FPS, gameState);
+				returnCode = frame.setScreen(currentScreen);
+				LOGGER.info("Closing score screen.");
+				break;
+			case 3:
+				// High scores.
+				currentScreen = new HighScoreScreen(width, height, FPS);
+				LOGGER.info("Starting " + WIDTH + "x" + HEIGHT
+						+ " high score screen at " + FPS + " fps.");
+				returnCode = frame.setScreen(currentScreen);
+				LOGGER.info("Closing high score screen.");
+				break;
+			case 4:
+				// Settings UI
+				currentScreen = new SettingsScreen(width, height, FPS);
+				LOGGER.info("Starting " + WIDTH + "x" + HEIGHT
+						+ " settings screen at " + FPS + " fps.");
+				returnCode = frame.setScreen(currentScreen);
+				LOGGER.info("Closing settings screen.");
+				break;
+			case 5:
+				// Shop.
+				currentScreen = new ShopScreen(width, height, FPS);
+				LOGGER.info("Starting " + WIDTH + "x" + HEIGHT
+						+ " shop screen at " + FPS + " fps.");
+				returnCode = frame.setScreen(currentScreen);
+				LOGGER.info("Closing shop screen.");
+				break;
+			case 6:
+				// Achievements.
+				currentScreen = new AchievementsScreen(width, height, FPS);
+				LOGGER.info("Starting " + WIDTH + "x" + HEIGHT
+						+ " achievements screen at " + FPS + " fps.");
+				returnCode = frame.setScreen(currentScreen);
+				LOGGER.info("Closing achievements screen.");
+				break;
+			case 7:
+				// Ship select.
+				currentScreen = new ShipSelectScreen(width, height, FPS);
+				LOGGER.info("Starting " + WIDTH + "x" + HEIGHT
+						+ " ship select screen at " + FPS + " fps.");
+				returnCode = frame.setScreen(currentScreen);
+				LOGGER.info("Closing ship select screen.");
+				break;
+			default:
+				// No screen for this code yet - back to the menu instead of
+				// spinning in this loop forever.
+				LOGGER.warning("Unknown return code " + returnCode
+						+ ", returning to the main menu.");
+				returnCode = 1;
+				break;
+			}
+
+		} while (returnCode != 0);
+
+		fileHandler.flush();
+		fileHandler.close();
+		System.exit(0);
+	}
+
+	/**
+	 * Between levels, lets the player bank pending diamonds and end the run,
+	 * or risk them on the next level (GoG - Currency System). Only shown
+	 * when there is a next level and something is at stake.
+	 *
+	 * @param gameState
+	 *            State going into the next level.
+	 * @param width
+	 *            Screen width.
+	 * @param height
+	 *            Screen height.
+	 * @return The same state if the player continues; if they cash out, a
+	 *         state past the last level with no pending diamonds, which
+	 *         ends the game loop normally.
+	 */
+	private static GameState offerCashOut(final GameState gameState,
+			final int width, final int height) {
+		boolean canContinue = gameState.getLivesRemaining() > 0
+				&& gameState.getLevel() <= NUM_LEVELS;
+		if (!canContinue || gameState.getPendingDiamonds() <= 0)
+			return gameState;
+
+		CashOutScreen cashOutScreen = new CashOutScreen(width, height, FPS,
+				gameState);
+		currentScreen = cashOutScreen;
+		LOGGER.info("Starting " + WIDTH + "x" + HEIGHT
+				+ " cash-out screen at " + FPS + " fps.");
+		frame.setScreen(currentScreen);
+		LOGGER.info("Closing cash-out screen.");
+
+		if (!cashOutScreen.didCashOut())
+			return gameState;
+		// Diamonds were banked by the screen itself.
+		return new GameState(NUM_LEVELS + 1, gameState.getScore(),
+				gameState.getLivesRemaining(), gameState.getBulletsShot(),
+				gameState.getShipsDestroyed(), 0,
+				gameState.getLevelsCompletedRun(), gameState.getCoinsCollected());
+	}
+
+	/**
+	 * Settles diamonds still pending when a run ends (GoG - Currency
+	 * System). Clearing the final level banks them automatically, since
+	 * there is nothing left to risk them on; dying forfeits them.
+	 *
+	 * @param gameState
+	 *            State at the end of the run.
+	 * @return State with no pending diamonds.
+	 */
+	private static GameState settlePendingDiamonds(final GameState gameState) {
+		int pending = gameState.getPendingDiamonds();
+		if (pending <= 0)
+			return gameState;
+		if (gameState.getLivesRemaining() > 0) {
+			DiamondManager.getInstance().addDiamonds(pending);
+			LOGGER.info("Run completed, banked " + pending + " diamonds.");
+		} else {
+			LOGGER.info("Run lost, " + pending + " pending diamonds forfeited.");
+		}
+		return new GameState(gameState.getLevel(), gameState.getScore(),
+				gameState.getLivesRemaining(), gameState.getBulletsShot(),
+				gameState.getShipsDestroyed(), 0,
+				gameState.getLevelsCompletedRun(), gameState.getCoinsCollected());
+	}
+
+	/**
+	 * Constructor, not called.
+	 */
+	private Core() {
+
+	}
+
+	/**
+	 * Controls access to the logger.
+	 * 
+	 * @return Application logger.
+	 */
+	public static Logger getLogger() {
+		return LOGGER;
+	}
+
+	/**
+	 * Controls access to the drawing manager.
+	 * 
+	 * @return Application draw manager.
+	 */
+	public static DrawManager getDrawManager() {
+		return DrawManager.getInstance();
+	}
+
+	/**
+	 * Controls access to the input manager.
+	 * 
+	 * @return Application input manager.
+	 */
+	public static InputManager getInputManager() {
+		return InputManager.getInstance();
+	}
+
+	/**
+	 * Controls access to the file manager.
+	 * 
+	 * @return Application file manager.
+	 */
+	public static FileManager getFileManager() {
+		return FileManager.getInstance();
+	}
+
+	/**
+	 * Controls access to the achievement manager.
+	 *
+	 * @return Shared achievement manager.
+	 */
+	public static AchievementManager getAchievementManager() {
+		if (achievementManager == null) {
+			achievementManager = new AchievementManager();
+
+			java.util.Set<String> roster = new java.util.HashSet<String>();
+
+			for (Ship.ShipType type : Ship.ShipType.values()) {
+				roster.add(getShipId(type));
+			}
+
+			achievementManager.configureLevel10Ships(roster);
+		}
+
+		return achievementManager;
+	}
+	/**
+	 * Returns the achievement ID of the selected ship. The standard ship is
+	 * the starter ship; other ships use their lower-case type name.
+	 *
+	 * @return Achievement ID of the selected ship.
+	 */
+	public static String getSelectedShipId() {
+		return getShipId(getSelectedShipType());
+	}
+
+	/**
+	 * Returns the stable profile ID for a ship type.
+	 *
+	 * @param type Ship type.
+	 * @return Ship ID used for achievement progress.
+	 */
+	public static String getShipId(final Ship.ShipType type) {
+		switch (type) {
+			case STANDARD:
+				return AchievementManager.STARTER_SHIP_ID;
+			case FAST_MOVE:
+				return "fast_move";
+			case TWO_WAY:
+				return "two_way";
+			case FAST_ATTACK:
+				return "fast_attack";
+			case BIG_BULLET:
+				return "big_bullet";
+			default:
+				throw new IllegalArgumentException("Unknown ship type: " + type);
+		}
+	}
+
+	/**
+	 * Returns the ship type chosen on the Customize screen. It is kept by
+	 * PurchaseManager (GoG), so it is saved between launches and a ship
+	 * that has not been bought falls back to the Standard ship.
+	 *
+	 * @return Selected ship type.
+	 */
+	public static Ship.ShipType getSelectedShipType() {
+		return PurchaseManager.getInstance().getSelectedShip();
+	}
+
+	/**
+	 * Remembers the ship type chosen on the Customize screen. Ships that
+	 * have not been bought in the Shop are ignored (GoG).
+	 *
+	 * @param shipType Ship type to use for the next runs.
+	 */
+	public static void setSelectedShipType(final Ship.ShipType shipType) {
+		if (shipType != null)
+			PurchaseManager.getInstance().selectShip(shipType);
+	}
+	/** @return Number of levels in the game. */
+	public static int getNumLevels() {
+		return NUM_LEVELS;
+	}
+
+	/**
+	 * Controls creation of new cooldowns.
+	 * 
+	 * @param milliseconds
+	 *            Duration of the cooldown.
+	 * @return A new cooldown.
+	 */
+	public static Cooldown getCooldown(final int milliseconds) {
+		return new Cooldown(milliseconds);
+	}
+
+	/**
+	 * Controls creation of new cooldowns with variance.
+	 * 
+	 * @param milliseconds
+	 *            Duration of the cooldown.
+	 * @param variance
+	 *            Variation in the cooldown duration.
+	 * @return A new cooldown with variance.
+	 */
+	public static Cooldown getVariableCooldown(final int milliseconds,
+			final int variance) {
+		return new Cooldown(milliseconds, variance);
+	}
+
+    /**
+     * The currently selected ship type for gameplay.
+     * Defaults to STANDARD.
+     */
+    private static entity.Ship.ShipType currentShipType = entity.Ship.ShipType.STANDARD;
+
+    /**
+     * Sets the currently selected ship type.
+     * Call this method from ShipSelectScreen when the player confirms their choice.
+     *
+     * @param shipType
+     *            The type of ship selected by the player.
+     */
+    public static void setCurrentShipType(final entity.Ship.ShipType shipType) {
+        currentShipType = shipType;
+    }
+
+    /**
+     * Gets the currently selected ship type.
+     * Used by GameScreen to spawn the correct ship.
+     *
+     * @return The current ship type.
+     */
+    public static entity.Ship.ShipType getCurrentShipType() {
+        return currentShipType;
+    }
+}
