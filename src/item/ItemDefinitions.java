@@ -146,7 +146,7 @@ class ItemDefinitions {
         ItemInfo magnet = new ItemInfo(
             "magnet",
             "Magnet",
-            "Equip: picks up items as soon as they land. A drop it cannot keep gives "
+            "Equip: pulls nearby items toward your ship. A drop it cannot keep on contact gives "
                 + balance.magnetConvertScore + " points instead.",
             "magnet",
             ActivationMode.EQUIPPED,

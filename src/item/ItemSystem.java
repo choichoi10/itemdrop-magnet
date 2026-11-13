@@ -236,16 +236,15 @@ public final class ItemSystem {
     public ItemAPI api() { return api; }
 
     /**
-     * Starts a level. The drop area comes from the screen size and the player ship position (floor = bottom of the ship).
+     * Starts a level. Drops leave the play area only when fully below the screen bottom.
      * Ends the previous level first if it was not ended.
      */
-    public void beginLevel(int level, int screenWidth, Entity ship, GameHooks gameHooks) {
+    public void beginLevel(int level, int screenWidth, int screenHeight, Entity ship, GameHooks gameHooks) {
         hooks = ItemAPI.required(gameHooks, "hooks");
         ItemAPI.required(ship, "ship");
         endLevel();
         levelNumber = level;
-        double floorY = ship.getPositionY() + ship.getHeight();
-        LevelRules rules = new LevelRules("level-" + level, 0, screenWidth, PLAY_AREA_TOP, floorY,
+        LevelRules rules = new LevelRules("level-" + level, 0, screenWidth, PLAY_AREA_TOP, screenHeight,
             balance.fallSpeed, balance.dropWidth, balance.dropHeight, balance.groundLifetimeMillis,
             dropRules());
         manager.beginLevel(rules, lifePort);

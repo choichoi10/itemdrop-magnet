@@ -9,14 +9,14 @@ import java.util.Random;
 import item.ItemAPI.*;
 
 /**
- * Drop management: owns the source state for spawning, falling, landing, contact and removal of item drops.
- * Stores id/ItemInfo/double position/landed/TTL in the inner private static class DroppedItem.
+ * Owns spawning, downward wandering, wall reflection, magnet attraction, swept contact and offscreen removal.
  * No separate files, no Entity subclass, no inventory/effect changes, no game object references.
  * No event queue here. The manager receives spawn/expire/contact results and records them as events.
  */
 class ItemDropSystem {
     private final ItemDefinitions definitions;
     private final Random random;
+    private final ItemBalance balance;
     private final Map<Long, DroppedItem> items = new LinkedHashMap<Long, DroppedItem>();
     private LevelRules rules;
     private long nextDropId = 1;
@@ -24,27 +24,29 @@ class ItemDropSystem {
     private static class DroppedItem {
         final long id;
         final ItemInfo info;
-        final double x;
-        double y, remainingMillis;
-        boolean grounded;
+        double x, y, velocityX, velocityY, directionMillis;
+        boolean magnetized;
 
-        DroppedItem(long id, ItemInfo info, double x, double y, LevelRules rules) {
+        DroppedItem(long id, ItemInfo info, double x, double y) {
             this.id = id;
             this.info = info;
             this.x = x;
             this.y = y;
-            grounded = y >= rules.floorY - rules.pickupHeight;
-            remainingMillis = rules.groundLifetimeMillis;
         }
 
         DropView view(LevelRules rules) {
             return new DropView(id, info,
-                new Bounds(x, y, rules.pickupWidth, rules.pickupHeight), grounded);
+                new Bounds(x, y, rules.pickupWidth, rules.pickupHeight), false, magnetized);
         }
     }
 
     ItemDropSystem(ItemDefinitions definitions, Random random) {
+        this(definitions, ItemBalance.defaults(), random);
+    }
+
+    ItemDropSystem(ItemDefinitions definitions, ItemBalance balance, Random random) {
         this.definitions = ItemAPI.required(definitions, "definitions");
+        this.balance = ItemAPI.required(balance, "balance");
         this.random = ItemAPI.required(random, "random");
     }
 
@@ -105,28 +107,21 @@ class ItemDropSystem {
             cx - rules.pickupWidth / 2));
         double y = Math.max(rules.top, Math.min(rules.floorY - rules.pickupHeight,
             cy - rules.pickupHeight / 2));
-        DroppedItem item = new DroppedItem(nextDropId++, info, x, y, rules);
+        DroppedItem item = new DroppedItem(nextDropId++, info, x, y);
+        chooseDirection(item);
         items.put(item.id, item);
         return item.view(rules);
     }
 
     /**
-     * Moves drops by delta>=0 milliseconds. y += fallSpeed * delta / 1000.0.
-     * Stops when the bottom reaches floorY; when landing mid-frame, only the time after landing counts against TTL.
-     * 1) Expired drops are removed from the list first and put in expired.
-     * 2) The rest are checked for contact between their previous/current vertical span and the player rectangle (edges included).
-     *    contacts is empty when canPickup=false. Even with delta=0, allowed current contacts are checked.
-     * 3) contacts is in ascending dropId order without duplicates; these drops are not yet removed from the list.
-     * During the same serial update, contacts are not changed/removed except by completePickup.
-     * The manager decides pickup and effect application. No storing, consuming or event publishing here.
+     * Advances game time only (no wall clock). Splits wandering paths at every turn, wall,
+     * bottom and magnet-range entry, so contact tests follow the actual path.
+     * Contact before an offscreen exit wins; the manager then decides pickup/conversion.
+     * Uncollectable ordinary drops keep moving and expire on a later update if necessary.
      */
     Frame advance(long delta, PlayerSnapshot player) { return advance(delta, player, false); }
 
-    /**
-     * Same as advance(delta, player). With collectLanded (magnet), a landed drop is also a contact
-     * while the player can pick up, wherever the player is.
-     */
-    Frame advance(long delta, PlayerSnapshot player, boolean collectLanded) {
+    Frame advance(long delta, PlayerSnapshot player, boolean magnetEquipped) {
         requireActive();
         if (delta < 0) throw new IllegalArgumentException("negative delta");
         ItemAPI.required(player, "player");
@@ -135,38 +130,120 @@ class ItemDropSystem {
         Iterator<DroppedItem> iterator = items.values().iterator();
         while (iterator.hasNext()) {
             DroppedItem item = iterator.next();
-            double previousY = item.y;
-            double groundedMillis = delta;
-            if (!item.grounded) {
-                double floorTop = rules.floorY - rules.pickupHeight;
-                double landingMillis = (floorTop - item.y) / rules.fallSpeed * 1000.0;
-                if (delta >= landingMillis) {
-                    item.y = floorTop;
-                    item.grounded = true;
-                    groundedMillis = delta - landingMillis;
-                } else {
-                    item.y = Math.min(floorTop, item.y + rules.fallSpeed * (delta / 1000.0));
-                    groundedMillis = 0;
-                }
-            }
-            if (item.grounded) item.remainingMillis -= groundedMillis;
-            DropView view = item.view(rules);
-            // Expiry wins over contact. Contact alone does not remove the drop.
-            if (item.remainingMillis <= 0) {
+            DropView contact = item.y >= rules.floorY ? null : move(item, delta, player, magnetEquipped);
+            if (contact != null) {
+                contacts.add(contact);
+            } else if (item.y >= rules.floorY) {
                 iterator.remove();
-                expired.add(view);
-                continue;
-            }
-            Bounds playerBounds = player.bounds;
-            boolean touching = item.x <= playerBounds.x + playerBounds.width
-                    && item.x + rules.pickupWidth >= playerBounds.x
-                    && previousY <= playerBounds.y + playerBounds.height
-                    && item.y + rules.pickupHeight >= playerBounds.y;
-            if (player.canPickup && (touching || (collectLanded && item.grounded))) {
-                contacts.add(view);
+                expired.add(item.view(rules));
             }
         }
         return new Frame(expired, contacts);
+    }
+
+    private void chooseDirection(DroppedItem item) {
+        item.velocityX = (random.nextBoolean() ? 1 : -1)
+            * balance.horizontalSpeed * (0.5 + random.nextDouble() * 0.5);
+        item.velocityY = rules.fallSpeed * (0.75 + random.nextDouble() * 0.5);
+        item.directionMillis = balance.directionChangeMillis;
+    }
+
+    private DropView move(DroppedItem item, long delta, PlayerSnapshot player, boolean magnetEquipped) {
+        boolean attract = magnetEquipped && player.canPickup;
+        double targetX = player.bounds.x + player.bounds.width / 2 - rules.pickupWidth / 2;
+        double targetY = player.bounds.y + player.bounds.height / 2 - rules.pickupHeight / 2;
+        if (attract && Math.hypot(item.x - targetX, item.y - targetY) <= balance.magnetRange)
+            item.magnetized = true;
+        DropView contact = player.canPickup ? contactAlong(item, 0, 0, player.bounds) : null;
+        double remaining = delta;
+        while (remaining > 0 && item.y < rules.floorY) {
+            if (attract && item.magnetized) {
+                double dx = targetX - item.x, dy = targetY - item.y;
+                double distance = Math.hypot(dx, dy);
+                // Stop at the player rather than overshooting and oscillating on long frames.
+                double fraction = distance == 0 ? 0
+                    : Math.min(1, balance.magnetSpeed * (remaining / 1000.0) / distance);
+                dx *= fraction;
+                dy *= fraction;
+                if (contact == null) contact = contactAlong(item, dx, dy, player.bounds);
+                item.x += dx;
+                item.y += dy;
+                break;
+            }
+
+            if (item.directionMillis <= 0) chooseDirection(item);
+            double right = rules.right - rules.pickupWidth;
+            if (item.x <= rules.left) item.velocityX = Math.abs(item.velocityX);
+            if (item.x >= right) item.velocityX = -Math.abs(item.velocityX);
+            // A play area exactly one item wide has no horizontal room.
+            double vx = right == rules.left ? 0 : item.velocityX;
+            double wallMillis = vx == 0 ? Double.POSITIVE_INFINITY
+                : ((vx > 0 ? right : rules.left) - item.x) / vx * 1000;
+            double bottomMillis = (rules.floorY - item.y) / item.velocityY * 1000;
+            double step = Math.min(remaining, Math.min(item.directionMillis, Math.min(wallMillis, bottomMillis)));
+            double dx = vx * (step / 1000.0), dy = item.velocityY * (step / 1000.0);
+            double entry = attract && !item.magnetized
+                ? rangeEntry(item.x - targetX, item.y - targetY, dx, dy, balance.magnetRange)
+                : Double.POSITIVE_INFINITY;
+            boolean captured = entry <= 1;
+            if (captured) {
+                step *= entry;
+                dx *= entry;
+                dy *= entry;
+            }
+            if (contact == null && player.canPickup) contact = contactAlong(item, dx, dy, player.bounds);
+            item.x = Math.max(rules.left, Math.min(right, item.x + dx));
+            item.y += dy;
+            remaining = Math.max(0, remaining - step);
+            item.directionMillis = Math.max(0, item.directionMillis - step);
+            if (captured) {
+                item.magnetized = true;
+                // Range entry may coincide with contact at the segment endpoint.
+                DropView attractedContact = contactAlong(item, 0, 0, player.bounds);
+                if (attractedContact != null) contact = attractedContact;
+            } else {
+                if (step == wallMillis) {
+                    item.x = vx > 0 ? right : rules.left;
+                    item.velocityX = -item.velocityX;
+                }
+                if (step == bottomMillis) item.y = rules.floorY;
+            }
+        }
+        return contact;
+    }
+
+    /** First entry of a line segment into the center-based magnet circle; infinity means no entry. */
+    private static double rangeEntry(double x, double y, double dx, double dy, double radius) {
+        double c = x * x + y * y - radius * radius;
+        if (c <= 0) return 0;
+        double a = dx * dx + dy * dy;
+        if (a == 0) return Double.POSITIVE_INFINITY;
+        double b = x * dx + y * dy;
+        if (b >= 0) return Double.POSITIVE_INFINITY;
+        double discriminant = b * b - a * c;
+        if (discriminant < 0) return Double.POSITIVE_INFINITY;
+        double entry = c / (-b + Math.sqrt(discriminant));
+        return entry <= 1 ? entry : Double.POSITIVE_INFINITY;
+    }
+
+    /** Sweeps the item's top-left through the player rectangle expanded by the item's size. */
+    private DropView contactAlong(DroppedItem item, double dx, double dy, Bounds player) {
+        double[] horizontal = axisTimes(item.x, dx, player.x - rules.pickupWidth, player.x + player.width);
+        double[] vertical = axisTimes(item.y, dy, player.y - rules.pickupHeight, player.y + player.height);
+        double enter = Math.max(0, Math.max(horizontal[0], vertical[0]));
+        double exit = Math.min(1, Math.min(horizontal[1], vertical[1]));
+        if (enter > exit) return null;
+        return new DropView(item.id, item.info,
+            new Bounds(item.x + dx * enter, item.y + dy * enter, rules.pickupWidth, rules.pickupHeight),
+            false, item.magnetized);
+    }
+
+    private static double[] axisTimes(double position, double movement, double low, double high) {
+        if (movement == 0) return position >= low && position <= high
+            ? new double[]{Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY}
+            : new double[]{Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY};
+        double first = (low - position) / movement, last = (high - position) / movement;
+        return new double[]{Math.min(first, last), Math.max(first, last)};
     }
 
     /**

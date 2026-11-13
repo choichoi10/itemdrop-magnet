@@ -112,8 +112,8 @@ public final class ShopCatalog {
 		// upgrade(id, name, description, coins, diamonds)
 		items.add(upgrade("extra_slots", "Extra Slots", "More item slots"
 				+ " in every run.", 60, 30));
-		items.add(upgrade("magnet", "Magnet", "Picks up items as soon as"
-				+ " they land.", 50, 25));
+		items.add(upgrade("magnet", "Magnet", "Pulls nearby items toward"
+				+ " your ship. Collects on contact.", 50, 25));
 		items.add(upgrade("max_life", "Max Life", "Life items can take you"
 				+ " higher than the normal cap.", 80, 40));
 		items.add(upgrade("long_lasting", "Long Lasting", "Shield, freeze"
