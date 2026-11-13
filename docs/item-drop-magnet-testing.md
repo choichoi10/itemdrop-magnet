@@ -42,15 +42,14 @@ check_dir=$(mktemp -d)
 mkdir -p "$check_dir/classes" "$check_dir/screenshots"
 find src tests -name '*.java' > "$check_dir/sources.txt"
 javac --release 17 -Xlint:all -d "$check_dir/classes" @"$check_dir/sources.txt"
-java -Djava.awt.headless=true -cp "$check_dir/classes:res" item.ItemDropMagnetTest
 java -Djava.awt.headless=true -cp "$check_dir/classes:res" TwoHitEnemyTest
 java -Djava.awt.headless=true -cp "$check_dir/classes:res" FinalBossAttackTest
 java -Djava.awt.headless=true -cp "$check_dir/classes:res" EffectIntegrationTest
 xvfb-run -a java -cp "$check_dir/classes:res" GameplayStarfieldTest "$check_dir/screenshots"
-java -Djava.awt.headless=true -cp "$check_dir/classes:res" item.ItemDropMagnetDemo "$check_dir/screenshots/item-drop-magnet.png"
+java -Djava.awt.headless=true -cp "$check_dir/classes:res" EffectIntegrationTest --item-demo "$check_dir/screenshots/item-drop-magnet.png"
 ```
 
-The item regression checks cover downward random motion, direction changes,
+The item regression section in the existing `EffectIntegrationTest` covers downward random motion, direction changes,
 wall reflections, screen exit, swept contact, magnet radius and persistent
 tracking, upward attraction, and score conversion when pickup fails. The
 existing game suites cover enemies, bosses, effects, rendering and pause/resume.
@@ -59,14 +58,13 @@ Validated with JDK 21 compiling for Java 17:
 
 | Suite | Checks passed |
 | --- | ---: |
-| `ItemDropMagnetTest` | 904 |
 | `TwoHitEnemyTest` | 166 |
 | `FinalBossAttackTest` | 124 |
-| `EffectIntegrationTest` | 77 |
+| `EffectIntegrationTest` (77 existing + 904 item checks) | 981 |
 | `GameplayStarfieldTest` (real window under Xvfb) | 29 |
 | **Total** | **1,300** |
 
-The item suite also verifies the real game's score hook: no award before
+The item section also verifies the real game's score hook: no award before
 contact, default +50 and configured +73, each awarded once. Two existing
 `this-escape` compilation warnings remain in `Frame` and `EnemyShip`.
 
