@@ -38,13 +38,16 @@ final class ItemBalance {
     final double regularDropProbability, specialDropProbability;
     /** itemId → weight. Keeps registration order. */
     final Map<String, Double> dropWeights;
-    final double fallSpeed, dropWidth, dropHeight;
+    final double fallSpeed, horizontalSpeed, dropWidth, dropHeight;
+    final long directionChangeMillis;
+    /** Legacy LevelRules constructor value; drops no longer land or use a ground lifetime. */
     final long groundLifetimeMillis;
 
     final int inventoryCapacity;
 
     /** Equipped items: extra slots, and the magnet score for a drop it cannot keep, extra max lives, and extra active item time. */
     final int extraSlotsAmount, magnetConvertScore, maxLifeAmount;
+    final double magnetRange, magnetSpeed;
     final long longLastingExtraMillis;
 
     /** Default values (initial design values). */
@@ -106,6 +109,8 @@ final class ItemBalance {
         weights.put("score_boost", weight(settings, "drop.weight.scoreBoost"));
         dropWeights = java.util.Collections.unmodifiableMap(weights);
         fallSpeed = positiveDouble(settings, "drop.fallSpeed", 80);
+        horizontalSpeed = positiveDouble(settings, "drop.horizontalSpeed", 65);
+        directionChangeMillis = positiveLong(settings, "drop.directionChangeMillis", 700L);
         dropWidth = positiveDouble(settings, "drop.width", 24);
         dropHeight = positiveDouble(settings, "drop.height", 24);
         groundLifetimeMillis = positiveLong(settings, "drop.groundLifetimeMillis", 8_000L);
@@ -114,6 +119,8 @@ final class ItemBalance {
 
         extraSlotsAmount = positiveInt(settings, "equip.extraSlots.amount", 1);
         magnetConvertScore = positiveInt(settings, "equip.magnet.convertScore", 50);
+        magnetRange = positiveDouble(settings, "equip.magnet.range", 140);
+        magnetSpeed = positiveDouble(settings, "equip.magnet.speed", 260);
         maxLifeAmount = positiveInt(settings, "equip.maxLife.amount", 1);
         longLastingExtraMillis = positiveLong(settings, "equip.longLasting.extraMillis", 3_000L);
     }

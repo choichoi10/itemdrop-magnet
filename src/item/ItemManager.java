@@ -45,7 +45,7 @@ public final class ItemManager {
     ItemManager(int capacity, ItemBalance balance, Random random) {
         if (capacity <= 0) throw new IllegalArgumentException("capacity");
         definitions = new ItemDefinitions(ItemAPI.required(balance, "balance"));
-        drops = new ItemDropSystem(definitions, ItemAPI.required(random, "random"));
+        drops = new ItemDropSystem(definitions, balance, ItemAPI.required(random, "random"));
         inventory = new ItemInventory(capacity);
         effects = new ItemEffectSystem();
     }
@@ -173,9 +173,10 @@ public final class ItemManager {
         for (DropView contact : frame.contacts) {
             Acquisition acquired = acquire(contact.item);
             if (acquired.failure != null) {
-                // The magnet takes a landed drop it cannot keep (full inventory, max stacks, ...)
+                // Only an attracted drop that physically touches the player is converted.
+                // The magnet takes a drop it cannot keep (full inventory, max stacks, ...)
                 // and reports it as converted; ItemSystem turns that into score.
-                if (magnetEquipped && contact.grounded) {
+                if (magnetEquipped && contact.magnetized) {
                     drops.completePickup(contact.dropId);
                     emit(EventType.ITEM_CONVERTED, contact.item.itemId, contact.dropId,
                         null, null, null, null, null, null, contact.bounds);
@@ -243,7 +244,7 @@ public final class ItemManager {
         // Inventory, pending reservations, grant results, IDs and queued events are kept for the run.
     }
 
-    /** Shared by floor pickup and direct NOW grants. The caller handles drop removal, receipts and cause events. */
+    /** Shared by contact pickup and direct NOW grants. The caller handles drop removal, receipts and cause events. */
     private Acquisition acquire(ItemInfo item) {
         if (item.activationMode == ActivationMode.MANUAL) {
             int slot = inventory.firstEmptySlot();

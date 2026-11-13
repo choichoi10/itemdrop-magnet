@@ -75,7 +75,7 @@ public final class ItemAPI {
         ITEM_SPAWNED, ITEM_COLLECTED, ITEM_USED, EFFECT_STARTED,
         EFFECT_ENDED, SHIELD_BLOCKED, ITEM_EXPIRED,
         ITEM_GRANTED, PENDING_GRANT_APPLIED,
-        /** The magnet took a landed drop it could not keep; it becomes score. */
+        /** A magnet-attracted drop touched the player but could not be kept; it becomes score. */
         ITEM_CONVERTED
     }
 
@@ -237,7 +237,9 @@ public final class ItemAPI {
 
     public static final class LevelRules {
         public final String levelId;
+        /** floorY is the screen bottom: drops disappear when their top reaches it. */
         public final double left, right, top, floorY, fallSpeed, pickupWidth, pickupHeight;
+        /** Legacy constructor value, retained for API compatibility; drops no longer land or have a ground TTL. */
         public final long groundLifetimeMillis;
         public final Map<DropSource, DropRule> dropRules;
         public LevelRules(String id, double left, double right, double top, double floorY,
@@ -326,11 +328,18 @@ public final class ItemAPI {
         public final long dropId;
         public final ItemInfo item;
         public final Bounds bounds;
+        /** Retained for callers of the old API; moving drops never become grounded. */
         public final boolean grounded;
+        /** True once this drop has entered an equipped magnet's range. */
+        public final boolean magnetized;
         public DropView(long id, ItemInfo item, Bounds bounds, boolean grounded) {
+            this(id, item, bounds, grounded, false);
+        }
+        public DropView(long id, ItemInfo item, Bounds bounds, boolean grounded, boolean magnetized) {
             if (id <= 0) throw new IllegalArgumentException("dropId");
             dropId = id; this.item = required(item, "item"); this.bounds = required(bounds, "bounds");
             this.grounded = grounded;
+            this.magnetized = magnetized;
         }
     }
 

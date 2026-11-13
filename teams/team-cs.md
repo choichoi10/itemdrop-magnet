@@ -35,7 +35,7 @@ Team CS owns the **Item System** requirement: items that spawn during gameplay, 
 10. **Score Boost Item** — A stored (active) item. On use, doubles the points earned from defeated enemies for 10 seconds. Using another one while it is active restarts the timer.
 11. **Equipped Items** — Items owned outside a run. One can be equipped at a time; it applies to every run while equipped, and a change takes effect from the next run. Ownership and the equipped item are saved between sessions.
     - **Extra Slots** — adds one inventory slot.
-    - **Magnet** — collects drops as soon as they land; a drop that cannot be kept (for example, a stored item with a full inventory) is converted into a 100-point score bonus.
+    - **Magnet** — pulls nearby drops toward the ship until contact; an attracted drop that cannot be kept (for example, a stored item with a full inventory) is converted into a configurable score bonus (50 points by default).
     - **Max Life** — raises the life item's max-life cap by 1 (to 4 by default).
     - **Long Lasting** — adds 1.5 seconds to timed active items (shield, freeze, boost, score boost).
 

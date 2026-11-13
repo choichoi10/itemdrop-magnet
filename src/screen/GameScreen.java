@@ -410,7 +410,7 @@ public class GameScreen extends Screen {
 
 		// Item System (Team CS): level 1 starts a new run, later levels keep it.
 		this.items = ItemSystem.forLevel(this.level);
-		this.items.beginLevel(this.level, this.width, this.ship,
+		this.items.beginLevel(this.level, this.width, this.height, this.ship,
 				new ItemSystem.GameHooks() {
 					public int getLives() { return lives; }
 					public void addLife() { lives++; }
